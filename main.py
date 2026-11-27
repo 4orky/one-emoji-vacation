@@ -1,66 +1,76 @@
 #!/usr/bin/env python3
-"""One Emoji, One Dream Vacation.
+"""Dream-vacation postcard: one emoji, nothing else.
 
-Writes exactly one emoji to /output/entry.txt: Mount Fuji (U+1F5FB).
+The brief asks for a single emoji that stands in for a dream trip,
+judged by a travel editor who collects wordless postcards. This
+program settles on Mount Fuji -- the snow-capped peak you recognise
+from a train window before you can name the country. One picture,
+one place, one dream: Japan, the mountain itself, the climb at
+dawn. Beaches will flood the field; a mountain where a beach was
+expected is the postcard that gets picked up twice.
 
-Why this emoji: the judge is a travel editor collecting wordless
-postcards and picks the emoji that most makes a stranger want to book
-the trip. A snow-capped Fuji is a postcard at a glance, names one
-particular dream (Japan, the mountain itself) instead of any generic
-holiday, and is the fresh pick against the flood of beaches everyone
-else will send -- a mountain where a beach was expected. It is a
-single code point, instantly readable at small size on any screen,
-and needs no explaining.
+What the program does: it writes that one emoji to the entry file
+(/output/entry.txt by default, overridable with ENTRY_PATH), then
+reads the file back and proves, byte by byte, that it holds exactly
+that emoji and nothing else. Any mismatch aborts loudly instead of
+letting a bad entry through."""
 
-The gate the sealed scorer applies: /output/entry.txt must be UTF-8
-text of 1 to 8 characters, not only white space. This program
-verifies its own output against that gate (plus a single-emoji check)
-after writing, and fails loudly instead of shipping a bad file.
-"""
+from os import environ
+from pathlib import Path
+from sys import exit as sys_exit
+from unicodedata import category as char_category, name as char_name
 
-import os
-import sys
-import unicodedata
+# The sealed gate the brief publishes: 1 to 8 characters, not only
+# white space. The identity checks below sit on top of that gate.
+GATE_MIN_CHARS = 1
+GATE_MAX_CHARS = 8
 
-ENTRY = "\U0001F5FB"  # 🗻 MOUNT FUJI
-OUTPUT_PATH = os.environ.get("OUTPUT_PATH", "/output/entry.txt")
+# The chosen postcard: MOUNT FUJI, a single code point U+1F5FB.
+FUJI = "\U0001F5FB"
+FUJI_UTF8 = b"\xf0\x9f\x97\xbb"
+ENTRY_PATH = Path(environ.get("ENTRY_PATH", "/output/entry.txt"))
 
 
-def is_single_emoji(text: str) -> bool:
-    """True when text is exactly one emoji code point.
+def describe(ch: str) -> str:
+    """One-line human-readable identity of the chosen character."""
+    try:
+        name = char_name(ch)
+    except ValueError:
+        name = "UNNAMED"
+    return f"U+{ord(ch):04X} {name}"
 
-    U+1F5FB is category So (Symbol, other) with emoji presentation.
-    A variation selector or ZWJ sequence would make len(text) > 1,
-    so a length-1 So character is exactly one plain emoji.
+
+def check_postcard(path: Path) -> str:
+    """Read the entry back and insist it is exactly the chosen emoji.
+
+    Checks run in the same order the brief's gate states them: the
+    size gate first, then identity, then the character's own kind.
     """
-    return (
-        len(text) == 1
-        and unicodedata.category(text) == "So"
-        and text.isprintable()
-    )
+    raw = path.read_bytes()
+    if raw != FUJI_UTF8:
+        raise SystemExit(f"entry bytes are not the Fuji postcard: {raw!r}")
+    entry = raw.decode("utf-8")
+    if not GATE_MIN_CHARS <= len(entry) <= GATE_MAX_CHARS:
+        raise SystemExit(
+            f"gate fail: {len(entry)} characters, need "
+            f"{GATE_MIN_CHARS}-{GATE_MAX_CHARS}"
+        )
+    if entry.strip() == "":
+        raise SystemExit("gate fail: entry holds only white space")
+    if entry != FUJI:
+        raise SystemExit(f"entry is {entry!r}, need the Fuji emoji")
+    if char_category(entry) != "So":
+        raise SystemExit(f"entry {entry!r} is not a symbol character")
+    return entry
 
 
-def validate(path: str) -> str:
-    """Read the written file back and check it against the gate."""
-    with open(path, encoding="utf-8") as f:
-        text = f.read()
-    if not (1 <= len(text) <= 8):
-        raise SystemExit(f"gate fail: {len(text)} characters, need 1-8")
-    if not text.strip():
-        raise SystemExit("gate fail: entry is only white space")
-    if not is_single_emoji(text):
-        raise SystemExit(f"gate fail: not exactly one emoji: {text!r}")
-    return text
-
-
-def main() -> None:
-    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    with open(OUTPUT_PATH, "w", encoding="utf-8") as f:
-        f.write(ENTRY)
-    text = validate(OUTPUT_PATH)
-    print(f"wrote {text!r} ({len(text)} char, "
-          f"{len(text.encode('utf-8'))} bytes) to {OUTPUT_PATH}")
+def main() -> int:
+    ENTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    ENTRY_PATH.write_bytes(FUJI_UTF8)
+    picked = check_postcard(ENTRY_PATH)
+    print(f"postcard written: {picked} ({describe(picked)}) -> {ENTRY_PATH}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys_exit(main())
